@@ -11,7 +11,7 @@
 
 **Déploiement automatisé d'Odoo ERP sur Kubernetes avec Talos OS et CloudNativePG**
 
-[Documentation](#-documentation) • [Installation](#-installation-rapide) • [Architecture](#-architecture) • [Contributing](#-contribution)
+[Documentation](https://graceful-salamander-33c222.netlify.app/guides/odoo-k8s/) • [Installation](#-installation-rapide) • [Architecture](#-architecture) • [Contributing](#-contribution)
 
 </div>
 
