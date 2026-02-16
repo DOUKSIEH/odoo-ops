@@ -1,4 +1,4 @@
-# 🚀 Odoo sur Kubernetes avec Talos OS
+# 🚀 Odoo sur Kubernetes avec Talos OS (en cours...)
 
 <div align="center">
 
@@ -796,15 +796,5 @@ Nous suivons le [Contributor Covenant](https://www.contributor-covenant.org/). S
 - 📋 Zero-downtime migrations
 - 📋 Advanced security hardening
 
----
 
-<div align="center">
-
-**⭐ Si ce projet vous aide, n'hésitez pas à mettre une étoile ! ⭐**
-
-Made with ❤️ by [Votre Organisation](https://github.com/votre-org)
-
-[🔝 Retour en haut](#-odoo-sur-kubernetes-avec-talos-os)
-
-</div>
 
