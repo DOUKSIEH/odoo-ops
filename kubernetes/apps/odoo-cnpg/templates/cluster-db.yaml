@@ -1,0 +1,35 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "odoo-cnpg.fullname" . }}-db
+  namespace: {{ .Release.Namespace }}
+spec:
+  instances: {{ .Values.database.instances }}
+  imageName: ghcr.io/cloudnativepg/postgresql:17 # PostgreSQL 17 via CNPG
+
+  # Injection des ressources (Indentation corrigée)
+  resources:
+{{- toYaml .Values.database.resources | nindent 4 }}
+
+  # Injection des paramètres PostgreSQL
+  postgresql:
+    parameters:
+{{- toYaml .Values.database.parameters | nindent 6 }}
+
+  # Gestion de l'affinité nœud
+  affinity:
+{{- if .Values.database.affinity.nodeSelector }}
+    nodeSelector:
+{{- toYaml .Values.database.affinity.nodeSelector | nindent 6 }}
+{{- end }}
+    enablePodAntiAffinity: {{ .Values.database.affinity.enablePodAntiAffinity }}
+    topologyKey: {{ .Values.database.affinity.topologyKey | quote }}
+
+  storage:
+    size: {{ .Values.database.storage.size | quote }}
+
+  # Création auto de la DB et du user odoo
+  bootstrap:
+    initdb:
+      database: odoo
+      owner: odoo

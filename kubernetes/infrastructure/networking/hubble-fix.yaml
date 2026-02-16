@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hubble-metrics
+  namespace: kube-system
+  labels:
+    k8s-app: hubble  # C'est ce label que le ServiceMonitor va chercher
+spec:
+  type: ClusterIP
+  clusterIP: None    # Mode Headless pour que Prometheus voit chaque nœud
+  selector:
+    k8s-app: cilium  # TRÈS IMPORTANT : On pointe vers les pods Cilium
+  ports:
+  - name: hubble-metrics
+    port: 9965
+    protocol: TCP
+    targetPort: 9965
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-hubble
+  namespace: kube-system
+  labels:
+    release: kube-prometheus-stack # Pour que l'Operator le détecte
+spec:
+  selector:
+    matchLabels:
+      k8s-app: hubble # Doit être identique au label du Service ci-dessus
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  endpoints:
+  - port: hubble-metrics
+    interval: 30s

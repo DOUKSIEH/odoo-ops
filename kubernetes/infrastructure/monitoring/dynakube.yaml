@@ -1,0 +1,82 @@
+apiVersion: v1
+data:
+  apiToken: ZHQwYzAxLlNJVUtVVVhJUDRYQVRWSFBTV1NWVEpURy41N1ozRzdYWFZWTkxMVjM3VVNITlMyTEozREI2UUVHR1VZNk1CSkVTUTVQQVBFSUNCT01BQzNWQjJXSEw2RFhT
+  dataIngestToken: ZHQwYzAxLkdQVE01UE5aTUk2WkhOWURDUE1VWlpVNy5GWE4yRjRQUkhQQ1VYSjNaV1JJVlhXNklHN1FYQzVMQzI1UkdPQVNNNEhGRTJCMlk1VUFPWkY1M09MRUJOQko1
+kind: Secret
+metadata:
+  name: talos-odoo
+  namespace: dynatrace
+  labels:
+    dynatrace.com/created-by: "dynatrace.kubernetes"
+type: Opaque
+
+---
+apiVersion: dynatrace.com/v1beta6
+kind: DynaKube
+metadata:
+  name: talos-odoo
+  namespace: dynatrace
+  labels:
+    dynatrace.com/created-by: "dynatrace.kubernetes"
+spec:
+  apiUrl: https://lfk50538.live.dynatrace.com/api
+
+  # trustedCAs: talos-odoo-activegate-tls-secret
+
+  metadataEnrichment:
+    enabled: true
+
+  oneAgent:
+    # applicationMonitoring: {}
+      # useCSIDriver: true
+    cloudNativeFullStack:
+    #   # ✅ Force stockage hostPath (pas CSI) - champ supporté par TON CRD
+    #   # storageHostPath: /var/lib/dynatrace/oneagent
+      # hostInjectSpec:
+      #   args:
+      #     - --set-host-property=OperatorManaged=true
+    #   tolerations:
+    #     - operator: Exists
+
+    #   # ❌ On enlève l’installpath custom
+      args:
+        - --set-host-property=OperatorManaged=true #--set-installpath=/var/lib/kubelet/device-plugins/rpc/dynatrace
+
+  activeGate:
+    capabilities:
+      - routing
+      - kubernetes-monitoring
+      - debugging
+
+    volumeClaimTemplate:
+      storageClassName: local-path
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 10Gi
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1.5Gi
+      limits:
+        cpu: 1000m
+        memory: 1.5Gi
+
+  templates:
+    otelCollector:
+      imageRef:
+        repository: public.ecr.aws/dynatrace/dynatrace-otel-collector
+        tag: latest
+
+  logMonitoring: {}
+  #   enabled: false #{}
+
+  telemetryIngest:
+    protocols:
+      - jaeger
+      - otlp
+      - statsd
+      - zipkin
+    serviceName: telemetry-ingest

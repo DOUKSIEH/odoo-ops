@@ -1,0 +1,5 @@
+replicaCount: 3
+database:
+  instances: 3
+  storage:
+    size: "10Gi"

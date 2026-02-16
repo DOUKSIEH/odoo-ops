@@ -1,0 +1,27 @@
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
+
+# --- Ansible ---
+*.retry
+inventory/hosts.ini  # Si tu y mets des IPs/clés en clair
+
+# Secrets et certificats (Sécurité)
+*.crt
+*.key
+*.secret.yaml
+activegate.crt
+dynakube.talos-odoo.backup.yaml
+
+# OS & Divers
+.DS_Store
+kubeconfig
+talosconfig
+
+##config (k8s et talos)
+secrets/
+*.zip
+*.backup.yaml

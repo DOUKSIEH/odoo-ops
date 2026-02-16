@@ -1,0 +1,54 @@
+# apiVersion: postgresql.cnpg.io/v1
+# kind: Cluster
+# metadata:
+#   name: odoo-db
+#   namespace: odoo-v19
+# spec:
+#   instances: 3
+#   # Configuration recommandée pour Odoo
+#   postgresql:
+#     parameters:
+#       max_connections: "200"
+#       shared_buffers: "256MB"
+# # On force la DB à rester sur les workers de production (1 et 2)
+#   # Si tu veux qu'elle puisse aussi aller sur le 3 et 4, retire ces lignes
+#   affinity:
+#     nodeSelector:
+#       role: production
+
+#   storage:
+#     size: 5Gi
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: odoo-db
+  namespace: odoo-v19
+spec:
+  instances: 3
+  
+  # 1. Ressources : Sécurité pour tes nœuds de 4 Go
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1.5Gi" # Empêche le nœud de saturer à 92% comme avant
+      cpu: "1"
+
+  # 2. Configuration PostgreSQL optimisée pour Odoo
+  postgresql:
+    parameters:
+      max_connections: "300"      # Odoo peut ouvrir beaucoup de connexions
+      shared_buffers: "512MB"     # Cache de lecture plus confortable
+      work_mem: "16MB"            # Mémoire pour les tris complexes
+
+  # 3. Répartition intelligente sur les 3 workers
+  affinity:
+    nodeSelector:
+      role: production
+    # Force la répartition : 1 instance par serveur physique
+    enablePodAntiAffinity: true
+    topologyKey: "kubernetes.io/hostname"
+
+  storage:
+    size: 10Gi # Je suggère 10Gi si tu as la place, 5Gi se remplit vite

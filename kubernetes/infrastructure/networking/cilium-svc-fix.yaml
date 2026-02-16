@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-agent
+  namespace: kube-system
+  labels:
+    k8s-app: cilium
+spec:
+  clusterIP: None
+  ports:
+  - name: metrics
+    port: 9962
+    protocol: TCP
+    targetPort: 9962
+  selector:
+    k8s-app: cilium
+  type: ClusterIP
+---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: cilium-operator-metrics
+#   namespace: kube-system
+#   labels:
+#     io.cilium/app: operator
+# spec:
+#   clusterIP: None
+#   ports:
+#   - name: metrics
+#     port: 6942
+#     protocol: TCP
+#     targetPort: 6942
+#   selector:
+#     io.cilium/app: operator
+#   type: ClusterIP
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-operator-metrics
+  namespace: kube-system
+  labels:
+    io.cilium/app: operator
+    k8s-app: cilium-operator # On ajoute ce label pour simplifier le matching
+spec:
+  clusterIP: None
+  ports:
+  - name: prometheus # On utilise le nom exact trouvé dans le Pod
+    port: 9963
+    protocol: TCP
+    targetPort: 9963
+  selector:
+    io.cilium/app: operator
+  type: ClusterIP

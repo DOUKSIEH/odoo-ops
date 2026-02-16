@@ -1,0 +1,6 @@
+apiVersion: v2
+name: odoo-cnpg
+description: Stack Odoo 19 avec PostgreSQL 17 via CloudNativePG
+type: application
+version: 1.0.0
+appVersion: "19.0"

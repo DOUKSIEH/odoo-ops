@@ -1,0 +1,7 @@
+apiVersion: ingress.k8s.ngrok.com/v1alpha1
+kind: Domain
+metadata:
+  name: odoo-domain
+  namespace: odoo-v19
+spec:
+  domain: mariette-nonliturgic-contumely.ngrok-free.dev

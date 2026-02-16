@@ -1,0 +1,12 @@
+# cluster-patch-cilium.yaml
+cluster:
+  network:
+    cni:
+      name: none   # Talos ne déploie aucun CNI (pas de Flannel)
+
+  # Optionnel mais recommandé si tu veux que Cilium remplace kube-proxy
+  # (meilleures perfs/stack plus “eBPF-native”)
+  proxy:
+    disabled: true
+
+

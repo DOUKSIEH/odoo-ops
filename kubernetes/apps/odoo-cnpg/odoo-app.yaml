@@ -1,0 +1,330 @@
+
+# ==========================================================
+# ODOO 19 - MANIFEST COMPLET (Talos + local-path + Ngrok Ingress)
+# Namespace: odoo-v19
+# URL publique: mariette-nonliturgic-contumely-ngrok-free-dev.ngrok-free.app
+# ==========================================================
+# ==========================================================
+# 0) NAMESPACE
+# ==========================================================
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: odoo-v19
+
+# ---
+# ==========================================================
+# 1) CONFIGMAP : Configuration minimale
+# On ne met PAS les infos de DB ici, l'entrypoint s'en occupe
+# via les variables d'environnement.
+# ==========================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: odoo-config
+  namespace: odoo-v19
+data:
+  odoo.conf: |
+    [options]
+    ; --- Reverse proxy (ngrok) ---
+    proxy_mode = True
+    ; --- Addons ---
+    ; Chemin addons Odoo + volume custom addons
+    addons_path = /usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+    ; --- Mode "simple" (pas de workers) ---
+    ; Pour démarrer facilement. En prod "vraie", on passe workers > 0 + longpolling dédié.
+    workers = 2
+    ; --- Logs ---   
+    log_level = info
+
+---
+# ==========================================================
+# 2) PERSISTENCE (PVC)
+# Un pour les documents (data), un pour tes briques (addons)
+# - odoo-data-pvc : filestore (/var/lib/odoo) -> pièces jointes, assets, etc.
+# - odoo-addons-pvc : tes modules custom (/mnt/extra-addons)
+#
+# NOTE local-path :
+# - RWO => Odoo doit rester en replica=1
+# - Le pod sera "attaché" au node où le PV existe
+# ==========================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: odoo-data-pvc
+  namespace: odoo-v19
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: odoo-addons-pvc
+  namespace: odoo-v19
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# ==========================================================
+# 3) SERVICE (ClusterIP) : Ports 8069 (Web) et 8072 (Longpolling/Chat)
+# - 8069 : HTTP Odoo
+# - 8072 : bus/longpolling (chat/live)
+#
+# NOTE :
+# L'ingress ngrok pointera sur 8069 (web).
+# 8072 reste exposé en interne (utile si un jour tu ajoutes une route dédiée).
+# ==========================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: odoo-service
+  namespace: odoo-v19
+spec:
+  selector:
+    app: odoo
+  ports:
+    - name: http
+      port: 8069
+      targetPort: 8069
+    - name: chat
+      port: 8072
+      targetPort: 8072
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: odoo-timeout
+  namespace: odoo-v19
+spec:
+  forwardingTimeouts:
+    responseHeaderTimeout: 600s
+    idleTimeout: 600s
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: odoo-route
+  namespace: odoo-v19
+spec:
+  entryPoints: ["web"]
+  # routes:
+  #   - match: PathPrefix(`/longpolling`)
+  #     kind: Rule
+  #     services: [{name: odoo-service, port: 8072}]
+  #   - match: PathPrefix(`/`)
+  #     kind: Rule
+  #     middlewares: [{name: odoo-sticky}]
+  #     services: [{name: odoo-service, port: 8069}]
+  routes:
+    - match: PathPrefix(`/longpolling`)
+      kind: Rule
+      middlewares:
+        - name: odoo-timeout
+      services:
+        - name: odoo-service
+          port: 8072
+    - match: PathPrefix(`/`)
+      kind: Rule
+      services:
+        - name: odoo-service
+          port: 8069
+---
+# ==========================================================
+# 4) DEPLOYMENT : Le coeur du système
+# - replica=1 (RWO local-path)
+# - nodeSelector role=production (tes workers prod)
+# - securityContext uid/gid 101 (user odoo)
+# - env DB : HOST/USER/PASSWORD (compatibles avec ton entrypoint.sh)
+# - volumes : config + data + addons
+#
+# CONSEIL :
+# Avec local-path, évite de laisser Kubernetes déplacer le pod n'importe où.
+# le nodeSelector "role=production" est bien.
+# ==========================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: odoo
+  namespace: odoo-v19
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: odoo
+  template:
+    metadata:
+      labels:
+        app: odoo
+    spec:
+      # Laisse du temps à Odoo de fermer proprement (transactions + workers)
+      terminationGracePeriodSeconds: 60
+      # Placement sur tes workers de production
+      nodeSelector:
+        role: production
+      #CORRECTION :
+      #Warning: would violate PodSecurity "restricted:latest": allowPrivilegeEscalation != false (container "odoo" must set securityContext.allowPrivilegeEscalation=false), 
+      #unrestricted capabilities (container "odoo" must set securityContext.capabilities.drop=["ALL"]), 
+      #seccompProfile (pod or container "odoo" must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")
+
+
+      # # --- Sécurité au niveau du POD - Sécurité pour l'utilisateur 'odoo' (uid 101)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: odoo
+          image: odoo:19.0
+          securityContext:
+              # --- Sécurité au niveau du CONTAINER ---
+              allowPrivilegeEscalation: false # Correction du 1er Warning
+              capabilities:
+                drop: ["ALL"] # Correction du 2ème Warning
+          # On ajoute des arguments pour :
+          # 1. Initialiser la base (-i base)
+          # 2. Sauvegarder les sessions là où on a le droit (--data-dir)
+          args: ["--", "-d", "app", "-i", "base", "--data-dir", "/var/lib/odoo"]
+          imagePullPolicy: Always
+          
+          # L'entrypoint.sh utilise ces variables pour configurer la DB
+          env:
+            - name: HOST
+              value: "odoo-db-rw"
+            - name: USER
+              value: "app"
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: odoo-db-app # Secret généré par CloudNativePG
+                  key: password
+            # --- CES 3 LIGNES SONT LA CLÉ POUR LE PERMISSION DENIED ---
+            - name: HOME
+              value: "/var/lib/odoo"
+            - name: XDG_DATA_HOME
+              value: "/var/lib/odoo/.local/share"
+            - name: XDG_CONFIG_HOME
+              value: "/var/lib/odoo/.config"
+
+          ports:
+            - name: http
+              containerPort: 8069
+            - name: chat
+              containerPort: 8072
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2.5Gi"
+
+          # Tests de disponibilité
+         # Readiness : Odoo est prêt à servir la page login
+          readinessProbe:
+            httpGet:
+              path: /web/login
+              port: 8069
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          # Liveness : si Odoo ne répond plus, kubelet redémarre le pod
+          livenessProbe:
+            httpGet:
+              path: /web/login
+              port: 8069
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          volumeMounts:
+            # odoo.conf depuis ConfigMap (lecture seule)
+            - name: odoo-config
+              mountPath: /etc/odoo/odoo.conf
+              subPath: odoo.conf
+              readOnly: true
+
+            # Filestore (persistant)
+            - name: odoo-data
+              mountPath: /var/lib/odoo
+
+            # Addons custom
+            - name: odoo-addons
+              mountPath: /mnt/extra-addons
+
+      volumes:
+        - name: odoo-config
+          configMap:
+            name: odoo-config
+        - name: odoo-data
+          persistentVolumeClaim:
+            claimName: odoo-data-pvc
+        - name: odoo-addons
+          persistentVolumeClaim:
+            claimName: odoo-addons-pvc
+
+---
+# ==========================================================
+# 5) INGRESS NGROK (HTTPS public via ngrok)
+# - host: mariette-nonliturgic-contumely-ngrok-free-dev.ngrok-free.app
+# - backend: Service odoo-service:8069
+# ==========================================================
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: odoo-ingress
+#   namespace: odoo-v19
+#   annotations:
+#     # k8s.ngrok.com/modules: '{"edges": {"compression": {"enabled": true}}}'
+#     k8s.ngrok.com/managed: "true"
+#     # On force l'utilisation du domaine défini au-dessus
+#     # k8s.ngrok.com/domain: mariette-nonliturgic-contumely-ngrok-free-dev.ngrok-free.app
+# spec:
+#   ingressClassName: ngrok
+#   rules:
+#     - host: mariette-nonliturgic-contumely.ngrok-free.dev
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: odoo-service
+#                 port:
+#                   number: 8069
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ngrok-to-traefik
+  namespace: traefik
+  annotations:
+    k8s.ngrok.com/managed: "true"
+spec:
+  ingressClassName: ngrok
+  rules:
+    - host: mariette-nonliturgic-contumely.ngrok-free.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: traefik
+                port:
+                  number: 80

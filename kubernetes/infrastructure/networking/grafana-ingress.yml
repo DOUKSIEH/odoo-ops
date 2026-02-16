@@ -1,0 +1,105 @@
+# =============================================================================
+# edge-ingress.yml (TEST ONLY)
+# Namespace owner du domaine fixe : monitoring
+# Domaine fixe : mariette-nonliturgic-contumely.ngrok-free.dev
+#
+# Objectif :
+# - https://<domain>/test  --> envoie vers nginx (namespace test) avec rewrite /test -> /
+#
+# Principe :
+# - Ingress + NgrokTrafficPolicy dans monitoring (owner du domaine)
+# - Un service "nginx-alias" dans monitoring
+# - Un EndpointSlice "nginx-alias-1" dans monitoring qui pointe vers les POD IPs nginx du namespace test
+#   (plus fiable que pointer vers le ClusterIP si tu as déjà eu des soucis kube-proxy / ClusterIP)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1) Policy ngrok : rewrite /test -> /
+# -----------------------------------------------------------------------------
+apiVersion: ngrok.k8s.ngrok.com/v1alpha1
+kind: NgrokTrafficPolicy
+metadata:
+  name: rewrite-test-only
+  namespace: monitoring
+spec:
+  policy:
+    on_http_request:
+      - name: RewriteTestPath
+        expressions:
+          - req.url.path.startsWith('/test')
+        actions:
+          - type: url-rewrite
+            config:
+              from: /test
+              to: /
+
+---
+# -----------------------------------------------------------------------------
+# 2) Service alias dans monitoring (sans selector)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-alias
+  namespace: monitoring
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+
+---
+# -----------------------------------------------------------------------------
+# 3) EndpointSlice : backends réels du service alias
+#    IMPORTANT : pas de "subsets" (ça c'est Endpoints v1)
+#    IMPORTANT : label kubernetes.io/service-name obligatoire
+#
+# => Mets ici les PodIPs nginx que tu as déjà :
+#    10.244.3.186 et 10.244.4.179
+#
+# (Si tes pods changent souvent d’IP, on pourra automatiser la génération)
+# -----------------------------------------------------------------------------
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: nginx-alias-1
+  namespace: monitoring
+  labels:
+    kubernetes.io/service-name: nginx-alias
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 80
+endpoints:
+  - addresses: ["10.244.3.186"]
+    conditions: { ready: true }
+  - addresses: ["10.244.4.179"]
+    conditions: { ready: true }
+
+---
+# -----------------------------------------------------------------------------
+# 4) Ingress unique (owner du domaine fixe)
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: edge-ingress
+  namespace: monitoring
+  annotations:
+    ngrok.com/bridge-protocol: "http"
+    ngrok.com/traffic-policy: "rewrite-test-only"
+spec:
+  ingressClassName: ngrok
+  rules:
+    - host: mariette-nonliturgic-contumely.ngrok-free.dev
+      http:
+        paths:
+          - path: /test
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-alias
+                port:
+                  number: 80

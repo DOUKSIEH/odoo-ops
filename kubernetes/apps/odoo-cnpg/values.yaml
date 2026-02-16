@@ -1,0 +1,45 @@
+# --- SECTION ODOO ---
+replicaCount: 1
+
+image:
+  repository: odoo
+  tag: "19.0"
+  pullPolicy: IfNotPresent
+
+# Ressources pour le conteneur Odoo (Ajouté pour le deployment.yaml)
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "1.5Gi"
+    cpu: "1"
+
+# --- SECTION BASE DE DONNÉES (CNPG) ---
+database:
+  instances: 1
+  storage:
+    size: "5Gi"
+  # Configuration des ressources pour éviter de saturer les nœuds de 4Go
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1.5Gi" # Limite critique pour éviter l'OOM Killer sur Talos
+      cpu: "1"
+  # Optimisations PostgreSQL 17 pour les performances Odoo
+  parameters:
+    max_connections: "300"
+    shared_buffers: "512MB" # Cache de données en RAM
+    work_mem: "16MB"        # Mémoire allouée par opération de tri
+  # Gestion du placement des Pods sur les workers
+  affinity:
+    nodeSelector:
+      role: production # Force le déploiement sur les nœuds étiquetés 'production'
+    enablePodAntiAffinity: true # Évite d'avoir 2 instances DB sur le même nœud physique
+    topologyKey: "kubernetes.io/hostname"
+
+service:
+  type: ClusterIP
+  port: 8069
