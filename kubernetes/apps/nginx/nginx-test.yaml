@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-test
+  name: nginx-test-argo
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx-test
+      app: nginx-test-argo
   template:
     metadata:
       labels:
-        app: nginx-test
+        app: nginx-test-argo
     spec:
       containers:
       - name: nginx
@@ -26,4 +26,4 @@ spec:
   ports:
   - port: 80
   selector:
-    app: nginx-test
+    app: nginx-test-argo
